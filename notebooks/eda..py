@@ -2,6 +2,11 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+
 #****************** EXPLORATION DE DATA **********************************
 path_raw="data/raw/rawFile.csv"
 df=pd.read_csv(path_raw)
@@ -14,7 +19,7 @@ print("***les dernieres lignes sont:***")
 print(df.tail())
 
 print("****les infos genereaux comme nb columns ... sont:*****")
-print(df.info())
+df.info()
 
 print("*******les lignes et columns sont:**********")
 print(df.shape)
@@ -26,16 +31,17 @@ print(df.describe(include="object"))
 #****************** NETTOYAGE DES DONNEES ******************************
 print("******les duplicateds****")
 print(df.duplicated())
-print("******total des duplicateds****")
+print("******total des duplicateds par columns****")
 print(df.duplicated().sum())
-print("******les manquants****")
-print(df.isna())
+print("****** Nombre de valeurs manquantes par colonne ******")
+print(df.isna().sum())
 print("******total des manquants****")
 print(df.isna().sum())
 
 #supprimer les valeurs manquants
 
 df = df.drop_duplicates()
+print("****** Nombre de doublons apres suppression ******")
 print(df.duplicated().sum())
 
 print(df.dtypes)
@@ -53,12 +59,13 @@ print(df["TotalCharges"].isnull().sum())
 #     print(df["TotalCharges"])
 #remplacer les manquants dans totalcharges 
 df["TotalCharges"]=df["TotalCharges"].fillna(
-    df["TotalCharges"].mean()
+    df["TotalCharges"].median()
 )
 print("********* LE NOMBRE DES VALEURS MANQUANTS DANS TOTALCHARGES apres remplissage****")
 
 print(df["TotalCharges"].isna().sum())
 print(df["TotalCharges"])
+
 #verifier les categories des valeurs
 categorical_columns = df.select_dtypes(
     include=["object", "category"]
@@ -100,9 +107,15 @@ plt.show()
 
 # # detecter outliers
 for col in colonnes_numeriques:
+
     plt.figure(figsize=(6, 3))
-    sns.boxplot(x=df[col])
+
+    sns.boxplot(
+        x=df[col]
+    )
+
     plt.title(f"Boxplot de {col}")
+
     plt.show()
 #avec IQR
 Q1 = df["TotalCharges"].quantile(0.25)
@@ -120,3 +133,63 @@ outliers = df[
 
 print("Nombre d'outliers :", len(outliers))
 
+#*************Feature engineering************
+#moyen de total charges (avec non (total/0==total/1))
+df["AvgMonthlySpend"] = (
+    df["TotalCharges"] /
+    df["Tenure"].replace(0, 1)
+)
+
+#Encoding + Standardisation
+# ****************** PREPARATION DES VARIABLES ******************************
+
+X = df.drop("Churn", axis=1)
+
+y = df["Churn"]
+
+print("Shape de X :", X.shape)
+print("Shape de y :", y.shape)
+
+numeric_features = X.select_dtypes(
+    include=["int64", "float64"]
+).columns
+
+categorical_features = X.select_dtypes(
+    include=["object", "category"]
+).columns
+
+print("Variables numériques :")
+print(numeric_features)
+
+print("Variables catégorielles :")
+print(categorical_features)
+
+preprocessor = ColumnTransformer(
+    transformers=[
+        (
+            "num",
+            StandardScaler(),
+            numeric_features
+        ),
+        (
+            "cat",
+            OneHotEncoder(
+                handle_unknown="ignore"
+            ),
+            categorical_features
+        )
+    ]
+)
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X,
+    y,
+    test_size=0.2,
+    random_state=42,
+    stratify=y
+)
+
+preprocessor.fit(X_train)
+
+X_train_transformed = preprocessor.transform(X_train)
+X_test_transformed = preprocessor.transform(X_test)
